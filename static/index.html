@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SLIC · PCA Visualizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #0a0a0f;
+  --s1:       #111118;
+  --s2:       #18181f;
+  --s3:       #22222c;
+  --border:   rgba(255,255,255,0.07);
+  --border2:  rgba(255,255,255,0.13);
+  --accent:   #7c6aff;
+  --accent2:  #ff6a9a;
+  --accent3:  #6affd4;
+  --text:     #f0eeff;
+  --muted:    #7a7a99;
+  --dim:      #33334a;
+  --fh:       'Syne', sans-serif;
+  --fm:       'DM Mono', monospace;
+  --r:        10px;
+  --rs:       6px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--fm);font-size:13px}
+
+/* shell */
+.shell{display:grid;grid-template-rows:50px 1fr;grid-template-columns:272px 1fr;height:100vh}
+
+/* topbar */
+.topbar{
+  grid-column:1/-1;
+  background:var(--s1);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:12px;padding:0 1.25rem;
+}
+.logo{font-family:var(--fh);font-weight:800;font-size:1.05rem;letter-spacing:-.02em;display:flex;align-items:center;gap:8px}
+.logo-pip{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent)}
+.logo em{color:var(--muted);font-style:normal;font-weight:400}
+.chip{font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:99px;border:1px solid var(--border2);color:var(--muted)}
+.ml{margin-left:auto}
+#statusChip{border-color:var(--dim);color:var(--dim);transition:all .3s}
+#statusChip.ready{border-color:var(--accent3);color:var(--accent3)}
+#statusChip.running{border-color:var(--accent);color:var(--accent);animation:pulse 1s ease-in-out infinite}
+#statusChip.done{border-color:var(--accent3);color:var(--accent3)}
+#statusChip.error{border-color:var(--accent2);color:var(--accent2)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* sidebar */
+.sidebar{
+  background:var(--s1);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;gap:1.25rem;
+  padding:1.1rem;overflow-y:auto;scrollbar-width:none
+}
+.sidebar::-webkit-scrollbar{display:none}
+
+.sec-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:.6rem;font-weight:500}
+
+/* upload */
+.dropzone{
+  border:1.5px dashed var(--dim);border-radius:var(--r);
+  padding:1.25rem .75rem;text-align:center;cursor:pointer;
+  transition:border-color .2s,background .2s
+}
+.dropzone:hover{border-color:var(--accent);background:rgba(124,106,255,.04)}
+.dropzone.loaded{border-color:var(--accent3);border-style:solid}
+.drop-icon{
+  width:30px;height:30px;border-radius:var(--rs);
+  border:1.5px solid var(--dim);
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 8px;font-size:15px;color:var(--muted);
+  transition:border-color .2s,color .2s
+}
+.dropzone:hover .drop-icon{border-color:var(--accent);color:var(--accent)}
+.dropzone.loaded .drop-icon{border-color:var(--accent3);color:var(--accent3)}
+.drop-hint{font-size:11px;color:var(--muted);line-height:1.5}
+#fileIn{display:none}
+#previewWrap{display:none;margin-top:.75rem;border-radius:var(--rs);overflow:hidden;border:1px solid var(--border2)}
+#previewImg{width:100%;display:block;max-height:120px;object-fit:cover}
+
+.div{height:1px;background:var(--border)}
+
+/* params */
+.param{margin-bottom:.9rem}
+.param-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.param-name{color:var(--muted);font-size:11px}
+.param-val{color:var(--accent);font-size:12px;font-weight:500;min-width:28px;text-align:right}
+input[type=range]{-webkit-appearance:none;width:100%;height:3px;background:var(--dim);border-radius:99px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;box-shadow:0 0 8px rgba(124,106,255,.5);transition:transform .15s}
+input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.2)}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;border:none}
+
+/* toggles */
+.tog-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.65rem}
+.tog-row span{font-size:11px;color:var(--muted)}
+.sw{position:relative;width:34px;height:19px;display:inline-block}
+.sw input{opacity:0;width:0;height:0}
+.sw-track{position:absolute;inset:0;background:var(--dim);border-radius:10px;cursor:pointer;transition:background .2s}
+.sw-track::before{content:'';position:absolute;width:13px;height:13px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:transform .2s}
+input:checked+.sw-track{background:var(--accent)}
+input:checked+.sw-track::before{transform:translateX(15px)}
+
+/* run btn */
+.run-btn{
+  width:100%;padding:9px;
+  background:var(--accent);color:#fff;border:none;border-radius:var(--rs);
+  font-family:var(--fh);font-weight:600;font-size:13px;letter-spacing:.04em;
+  cursor:pointer;transition:opacity .15s,box-shadow .2s,transform .1s;
+  box-shadow:0 0 22px rgba(124,106,255,.3)
+}
+.run-btn:hover{opacity:.9;box-shadow:0 0 32px rgba(124,106,255,.5)}
+.run-btn:active{transform:scale(.98)}
+.run-btn:disabled{opacity:.3;cursor:not-allowed}
+.run-btn.loading{background:var(--s3);color:var(--muted);box-shadow:none}
+
+/* api note */
+.api-note{font-size:10px;color:var(--dim);line-height:1.6;padding:.5rem .6rem;background:var(--s2);border-radius:var(--rs);border:1px solid var(--border)}
+.api-note a{color:var(--accent);text-decoration:none}
+
+/* main */
+.main{display:flex;flex-direction:column;overflow:hidden}
+
+/* tabs */
+.tabbar{display:flex;background:var(--s1);border-bottom:1px solid var(--border);padding:0 1.25rem}
+.tab{font-family:var(--fm);font-size:11px;letter-spacing:.04em;padding:13px 16px;background:transparent;border:none;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab:hover:not(.active){color:var(--text)}
+
+/* progress */
+.prog-wrap{height:2px;background:var(--border);overflow:hidden}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));width:0%;transition:width .35s ease}
+
+/* canvas area */
+.canvas-area{flex:1;display:flex;align-items:center;justify-content:center;padding:1.25rem;position:relative;overflow:hidden;background:var(--bg)}
+.result-img{max-width:100%;max-height:100%;border-radius:var(--r);border:1px solid var(--border2);display:none;box-shadow:0 0 40px rgba(0,0,0,.5)}
+
+/* empty */
+.empty{display:flex;flex-direction:column;align-items:center;gap:.6rem;text-align:center}
+.empty-grid{display:grid;grid-template-columns:repeat(7,16px);grid-template-rows:repeat(4,16px);gap:3px;margin-bottom:.25rem;opacity:.2}
+.eg-cell{border-radius:3px}
+.empty p{font-size:12px;color:var(--muted)}
+.empty small{font-size:10px;color:var(--dim)}
+
+/* spinner overlay */
+.spinner-ov{position:absolute;inset:0;background:rgba(10,10,15,.75);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;flex-direction:column;gap:.75rem;z-index:9;border-radius:0}
+.spinner-ov.show{display:flex}
+.spin-ring{width:34px;height:34px;border-radius:50%;border:2px solid var(--dim);border-top-color:var(--accent);animation:spin .75s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin-lbl{font-size:11px;color:var(--muted)}
+
+/* stat bar */
+.statbar{display:flex;border-top:1px solid var(--border);background:var(--s1)}
+.stat{flex:1;padding:.55rem 1rem;border-right:1px solid var(--border)}
+.stat:last-child{border-right:none}
+.stat-v{font-size:15px;font-weight:500;color:var(--text)}
+.stat-l{font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--dim);margin-top:2px}
+
+/* log */
+.logbar{border-top:1px solid var(--border);background:var(--bg);padding:.45rem 1.25rem;font-size:10px;color:var(--muted);display:flex;align-items:center;gap:.5rem;min-height:28px}
+.log-dot{width:5px;height:5px;border-radius:50%;background:var(--dim);flex-shrink:0;transition:all .3s}
+.log-dot.on{background:var(--accent3);box-shadow:0 0 6px var(--accent3)}
+
+/* error box */
+.err-box{position:absolute;bottom:60px;left:50%;transform:translateX(-50%);background:#2a0a12;border:1px solid var(--accent2);border-radius:var(--rs);padding:.75rem 1rem;font-size:11px;color:var(--accent2);max-width:480px;white-space:pre-wrap;display:none;z-index:10;font-family:var(--fm)}
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+<!-- ── topbar ── -->
+<header class="topbar">
+  <div class="logo"><div class="logo-pip"></div>SLIC <em>·</em> PCA</div>
+  <div class="chip">Superpixel Visualizer</div>
+  <div class="chip ml" id="statusChip">idle</div>
+</header>
+
+<!-- ── sidebar ── -->
+<aside class="sidebar">
+
+  <div>
+    <div class="sec-label">Image</div>
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('fileIn').click()">
+      <div class="drop-icon">&#8679;</div>
+      <div class="drop-hint" id="dropHint">Drop image here<br><span style="color:var(--dim)">or click to browse</span></div>
+    </div>
+    <div id="previewWrap"><img id="previewImg" alt="preview"></div>
+    <input type="file" id="fileIn" accept="image/*">
+  </div>
+
+  <div class="div"></div>
+
+  <div>
+    <div class="sec-label">SLIC Parameters</div>
+    <div class="param">
+      <div class="param-row"><span class="param-name">Superpixels (K)</span><span class="param-val" id="kv">100</span></div>
+      <input type="range" id="K" min="20" max="400" step="10" value="100" oninput="kv.textContent=this.value">
+    </div>
+    <div class="param">
+      <div class="param-row"><span class="param-name">Compactness (m)</span><span class="param-val" id="mv">10</span></div>
+      <input type="range" id="M" min="1" max="40" step="1" value="10" oninput="mv.textContent=this.value">
+    </div>
+    <div class="param">
+      <div class="param-row"><span class="param-name">Iterations</span><span class="param-val" id="itv">5</span></div>
+      <input type="range" id="ITER" min="1" max="20" step="1" value="5" oninput="itv.textContent=this.value">
+    </div>
+    <div class="tog-row">
+      <span>Boundary overlay</span>
+      <label class="sw"><input type="checkbox" id="showB" checked><span class="sw-track"></span></label>
+    </div>
+    <div class="tog-row">
+      <span>Color-filled view</span>
+      <label class="sw"><input type="checkbox" id="showF"><span class="sw-track"></span></label>
+    </div>
+  </div>
+
+  <div class="div"></div>
+
+  <div>
+    <div class="sec-label">PCA Parameters</div>
+    <div class="param">
+      <div class="param-row"><span class="param-name">Dimensions</span><span class="param-val" id="dimv">2</span></div>
+      <input type="range" id="DIM" min="2" max="3" step="1" value="2" oninput="dimv.textContent=this.value">
+    </div>
+  </div>
+
+  <div class="div"></div>
+
+  <div style="margin-top:auto;display:flex;flex-direction:column;gap:.6rem">
+    <button class="run-btn" id="runBtn" onclick="runPipeline()">&#9654;&nbsp; Run Pipeline</button>
+    <div class="api-note">
+      Calls <strong style="color:var(--muted)">localhost:5000</strong> — start the Python server first:<br>
+      <code style="color:var(--accent3)">python app.py</code>
+    </div>
+  </div>
+
+</aside>
+
+<!-- ── main ── -->
+<main class="main">
+
+  <div class="tabbar">
+    <button class="tab active" id="tbSlic" onclick="switchTab('slic')">SLIC Output</button>
+    <button class="tab" id="tbPca"  onclick="switchTab('pca')">PCA Projection</button>
+  </div>
+
+  <div class="prog-wrap"><div class="prog-fill" id="progFill"></div></div>
+
+  <div class="canvas-area" id="canvasArea">
+
+    <div class="empty" id="emptyState">
+      <div class="empty-grid" id="emptyGrid"></div>
+      <p>No result yet</p>
+      <small>Upload an image and click Run Pipeline</small>
+    </div>
+
+    <img class="result-img" id="slicImg" alt="SLIC result">
+    <img class="result-img" id="pcaImg"  alt="PCA result">
+
+    <div class="spinner-ov" id="spinner">
+      <div class="spin-ring"></div>
+      <span class="spin-lbl" id="spinLbl">Processing…</span>
+    </div>
+
+    <div class="err-box" id="errBox"></div>
+  </div>
+
+  <div class="statbar" id="statBar" style="display:none">
+    <div class="stat"><div class="stat-v" id="sK">—</div><div class="stat-l">Superpixels</div></div>
+    <div class="stat"><div class="stat-v" id="sPx">—</div><div class="stat-l">Pixels</div></div>
+    <div class="stat"><div class="stat-v" id="sPC1">—</div><div class="stat-l">PC1 var</div></div>
+    <div class="stat"><div class="stat-v" id="sPC2">—</div><div class="stat-l">PC2 var</div></div>
+    <div class="stat"><div class="stat-v" id="sTime">—</div><div class="stat-l">Runtime</div></div>
+  </div>
+
+  <div class="logbar">
+    <div class="log-dot" id="logDot"></div>
+    <span id="logTxt">Ready — start the Python server, upload an image, and press Run.</span>
+  </div>
+
+</main>
+</div>
+
+<script>
+const API = "http://localhost:5000";
+
+/* state */
+let imageB64   = null;  // full base64 data-url of uploaded image
+let lastCenters = null; // cluster centers from last SLIC run
+let lastEvr     = null;
+let currentTab  = 'slic';
+let showBounds  = true;
+let showFill    = false;
+let slicResult  = null; // { boundary_image, filled_image }
+
+/* empty grid */
+{
+  const g = document.getElementById('emptyGrid');
+  const cols = ['#7c6aff','#ff6a9a','#6affd4','#33334a','#18181f'];
+  for (let i = 0; i < 28; i++) {
+    const d = document.createElement('div');
+    d.className = 'eg-cell';
+    d.style.cssText = `background:${cols[i%cols.length]};opacity:${(.15+Math.random()*.55).toFixed(2)}`;
+    g.appendChild(d);
+  }
+}
+
+/* helpers */
+function log(msg, active=false) {
+  document.getElementById('logTxt').textContent = msg;
+  document.getElementById('logDot').classList.toggle('on', active);
+}
+function status(s) {
+  const c = document.getElementById('statusChip');
+  c.textContent = s;
+  c.className = 'chip ml ' + s;
+}
+function prog(p) { document.getElementById('progFill').style.width = p + '%'; }
+function showErr(msg) {
+  const b = document.getElementById('errBox');
+  b.textContent = msg;
+  b.style.display = msg ? 'block' : 'none';
+}
+function spin(show, lbl='Processing…') {
+  document.getElementById('spinner').classList.toggle('show', show);
+  document.getElementById('spinLbl').textContent = lbl;
+}
+
+/* upload */
+document.getElementById('fileIn').onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    imageB64 = ev.target.result;
+    // show tiny preview
+    document.getElementById('previewImg').src = imageB64;
+    document.getElementById('previewWrap').style.display = 'block';
+    document.getElementById('dropzone').classList.add('loaded');
+    document.getElementById('dropHint').innerHTML =
+      `<strong style="color:var(--accent3)">${f.name}</strong><br><span style="color:var(--dim)">${(f.size/1024).toFixed(0)} KB</span>`;
+    log('Image loaded — press Run Pipeline');
+    status('ready');
+    // reset any old result
+    slicResult = null; lastCenters = null;
+    document.getElementById('slicImg').style.display = 'none';
+    document.getElementById('pcaImg').style.display  = 'none';
+    document.getElementById('emptyState').style.display = 'flex';
+    showErr('');
+  };
+  reader.readAsDataURL(f);
+};
+
+/* drag & drop */
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.borderColor='var(--accent)'; });
+dz.addEventListener('dragleave', () => { dz.style.borderColor=''; });
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.style.borderColor='';
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) {
+    const dt = new DataTransfer(); dt.items.add(f);
+    document.getElementById('fileIn').files = dt.files;
+    document.getElementById('fileIn').onchange({ target: { files: dt.files } });
+  }
+});
+
+/* tab switch */
+function switchTab(t) {
+  currentTab = t;
+  document.getElementById('tbSlic').classList.toggle('active', t === 'slic');
+  document.getElementById('tbPca').classList.toggle('active',  t === 'pca');
+  document.getElementById('slicImg').style.display = (t==='slic' && slicResult) ? 'block' : 'none';
+  document.getElementById('pcaImg').style.display  = (t==='pca'  && document.getElementById('pcaImg').src) ? 'block' : 'none';
+  const noResult = (t==='slic' && !slicResult) || (t==='pca' && !document.getElementById('pcaImg').src.startsWith('data'));
+  document.getElementById('emptyState').style.display = noResult ? 'flex' : 'none';
+}
+
+/* toggle handlers */
+document.getElementById('showB').onchange = e => {
+  showBounds = e.target.checked;
+  applySlicView();
+};
+document.getElementById('showF').onchange = e => {
+  showFill = e.target.checked;
+  applySlicView();
+};
+
+function applySlicView() {
+  if (!slicResult) return;
+  const img = document.getElementById('slicImg');
+  if (showFill) {
+    // filled + optional boundary
+    img.src = slicResult.filled_image;
+  } else {
+    img.src = showBounds ? slicResult.boundary_image : slicResult.original_image;
+  }
+}
+
+/* main pipeline */
+async function runPipeline() {
+  if (!imageB64) { log('No image loaded.'); return; }
+
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.textContent = '⏳  Running…';
+  status('running');
+  showErr('');
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('slicImg').style.display = 'none';
+  document.getElementById('pcaImg').style.display  = 'none';
+
+  const K     = document.getElementById('K').value;
+  const m     = document.getElementById('M').value;
+  const iters = document.getElementById('ITER').value;
+  const dim   = document.getElementById('DIM').value;
+
+  const t0 = performance.now();
+
+  /* step 1: SLIC */
+  try {
+    prog(10);
+    spin(true, 'Running SLIC (Python)…');
+    log('Sending image to Python server…', true);
+
+    const res  = await fetch(`${API}/api/slic`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: imageB64, K, m, iters })
+    });
+    const data = await res.json();
+
+    if (!data.ok) throw new Error(data.error);
+
+    slicResult = {
+      boundary_image: data.boundary_image,
+      filled_image:   data.filled_image,
+      original_image: imageB64,
+    };
+    lastCenters = data.centers;
+
+    // show SLIC result
+    const slicImg = document.getElementById('slicImg');
+    slicImg.src = showFill ? data.filled_image : data.boundary_image;
+    if (currentTab === 'slic') {
+      slicImg.style.display = 'block';
+    }
+
+    document.getElementById('sK').textContent  = data.n_superpixels;
+    document.getElementById('sPx').textContent = (data.image_size[0] * data.image_size[1]).toLocaleString();
+
+    prog(55);
+    log('SLIC done — running PCA…', true);
+    spin(true, 'Running PCA (Python)…');
+
+    /* step 2: PCA */
+    const res2  = await fetch(`${API}/api/pca`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ centers: lastCenters, dim })
+    });
+    const data2 = await res2.json();
+
+    if (!data2.ok) throw new Error(data2.error);
+
+    lastEvr = data2.explained;
+    const pcaImg = document.getElementById('pcaImg');
+    pcaImg.src = data2.pca_image;
+    if (currentTab === 'pca') {
+      pcaImg.style.display = 'block';
+      document.getElementById('emptyState').style.display = 'none';
+    }
+
+    document.getElementById('sPC1').textContent  = (data2.explained[0]*100).toFixed(1)+'%';
+    document.getElementById('sPC2').textContent  = (data2.explained[1]*100).toFixed(1)+'%';
+    document.getElementById('sTime').textContent = ((performance.now()-t0)/1000).toFixed(2)+'s';
+    document.getElementById('statBar').style.display = 'flex';
+
+    prog(100);
+    setTimeout(()=>prog(0), 900);
+    spin(false);
+    log(`Done — ${data.n_superpixels} superpixels in ${((performance.now()-t0)/1000).toFixed(2)}s`);
+    status('done');
+
+  } catch(err) {
+    spin(false);
+    prog(0);
+    status('error');
+    const msg = err.message.includes('Failed to fetch')
+      ? 'Cannot reach server — is  "python app.py"  running on port 5000?'
+      : err.message;
+    showErr(msg);
+    log('Error — see red box in canvas area');
+    document.getElementById('emptyState').style.display = 'flex';
+  }
+
+  btn.disabled = false;
+  btn.classList.remove('loading');
+  btn.textContent = '▶  Run Pipeline';
+}
+</script>
+</body>
+</html>
